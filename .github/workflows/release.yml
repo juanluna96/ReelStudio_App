@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: macos-14 # Apple Silicon: la app se construye para arm64
+    runs-on: macos-latest # Apple Silicon (arm64); macos-14 ya no está disponible
     steps:
       - uses: actions/checkout@v4
         with:
