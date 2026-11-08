@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useLayoutEffect, useRef, useState} from 'react';
 import ResizeHandle from '@/components/common/ResizeHandle';
 import {marked} from 'marked';
-import {ArrowUp, Check, History, ImagePlus, Lightbulb, Loader2, PanelRightClose, Plus, Square, Target, Wrench, X} from 'lucide-react';
+import {ArrowUp, Check, History, ImagePlus, Lightbulb, Loader2, PanelRightClose, PanelRightOpen, Plus, Square, Target, Wrench, X} from 'lucide-react';
 import {Button} from '@/components/ui/button';
 import {cn} from '@/lib/utils';
 import ListSkeleton from '@/components/common/ListSkeleton';
@@ -14,7 +14,9 @@ import {CommandMenu, ContextRing, ModePicker, ModelPicker, matchCommands, refres
 // Claude's markdown, with raw HTML shown as text rather than rendered.
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'})[c]!);
 marked.use({renderer: {html: ({text}) => esc(text)}, gfm: true, breaks: true});
-export const md = (s: string) => marked.parse(s, {async: false}) as string;
+// A wide table scrolls sideways on its own instead of the whole chat (raw HTML is escaped, so every <table> is marked's).
+export const md = (s: string) =>
+  (marked.parse(s, {async: false}) as string).replace(/<table>/g, '<div class="max-w-full overflow-x-auto"><table>').replace(/<\/table>/g, '</table></div>');
 
 const GENERAL = '_general';
 
@@ -123,7 +125,7 @@ function Item({item, slug, onSeek, onPermission}: {item: ChatItem; slug: string 
     case 'assistant':
       return (
         <div
-          className="prose prose-sm max-w-none prose-invert prose-p:my-2 prose-pre:bg-muted prose-code:before:content-none prose-code:after:content-none prose-img:my-2 prose-img:inline-block prose-img:max-h-72 prose-img:max-w-full prose-img:cursor-zoom-in prose-img:rounded-md"
+          className="prose prose-sm max-w-none dark:prose-invert prose-p:my-2 prose-pre:bg-muted prose-code:before:content-none prose-code:after:content-none prose-img:my-2 prose-img:inline-block prose-img:max-h-72 prose-img:max-w-full prose-img:cursor-zoom-in prose-img:rounded-md"
           dangerouslySetInnerHTML={{__html: md(item.text)}}
           // An image the agent showed opens in full in a new tab.
           onClick={(e) => {
@@ -429,7 +431,7 @@ function Conversation({chatKey, chatId, slug, visible, onNew}: {chatKey: string;
         )}
         {st?.items.map((it) => <Item key={it.id} item={it} slug={slug} onSeek={(t) => studio.seekRef.current(t)} onPermission={(item, allow) => chatApi.answerPermission(chatKey, chatId, item, allow)} />)}
         {st?.running && st.live && (
-          <div className="prose prose-sm max-w-none prose-invert prose-p:my-2 prose-img:my-2 prose-img:inline-block prose-img:max-h-72 prose-img:max-w-full prose-img:rounded-md after:ml-0.5 after:animate-pulse after:content-['▍']" dangerouslySetInnerHTML={{__html: md(st.live)}} />
+          <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-2 prose-img:my-2 prose-img:inline-block prose-img:max-h-72 prose-img:max-w-full prose-img:rounded-md after:ml-0.5 after:animate-pulse after:content-['▍']" dangerouslySetInnerHTML={{__html: md(st.live)}} />
         )}
         {st?.running && (
           <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
@@ -684,6 +686,7 @@ export function AgentPanel({slug}: {slug: string | null}) {
     >
       {!open && (
         <button onClick={() => setOpen(true)} title={`Abrir ${agent} (⌘J)`} className="animate-fade-in flex h-full w-full flex-col items-center gap-3 py-3 text-muted-foreground hover:bg-muted hover:text-foreground">
+          <PanelRightOpen className="size-4" />
           <span className="rotate-180 text-xs font-medium [writing-mode:vertical-rl]">{agent}</span>
           {running ? <Loader2 className="size-4 animate-spin text-foreground" /> : unread ? <Unread /> : null}
         </button>
@@ -747,7 +750,7 @@ export function AgentPanel({slug}: {slug: string | null}) {
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button variant="ghost" size="icon-sm" className="md:hidden" onClick={() => setOpen(false)} title="Recoger (⌘J)">
+          <Button variant="ghost" size="icon-sm" onClick={() => setOpen(false)} title="Recoger (⌘J)">
             <PanelRightClose />
           </Button>
         </div>
