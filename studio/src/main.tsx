@@ -159,7 +159,7 @@ function Root() {
     return (
       <div className="grid min-h-screen place-items-center p-6">
         <div className="flex flex-col items-center gap-4 text-center">
-          <Logo variant="mark" size={72} className={err ? undefined : 'animate-pulse'} />
+          <Logo variant="mark" size={72} animated={!err} />
           {err ? <p className="max-w-sm text-sm text-destructive">{err}</p> : <p className="text-xs text-muted-foreground">Cargando…</p>}
         </div>
       </div>

@@ -8,6 +8,7 @@ import path from 'node:path';
 import {spawn, type ChildProcess} from 'node:child_process';
 import {app, BrowserWindow, dialog, ipcMain, nativeTheme, shell} from 'electron';
 import {setupUpdates} from './updater.ts';
+import {ANIMATION_CSS, markSvg} from '../src/components/common/Logo/Logo.constants.ts';
 
 const STUDIO = path.resolve(import.meta.dirname, '..');
 const PORT = Number(process.env.PORT ?? 4000);
@@ -61,7 +62,7 @@ async function ensureServer(): Promise<void> {
 
 const page = (body: string) =>
   `data:text/html;charset=utf-8,${encodeURIComponent(
-    `<!doctype html><html><body style="margin:0;height:100vh;display:grid;place-items:center;background:${bg()};color:${fg()};font:14px -apple-system,system-ui,'Segoe UI',sans-serif;-webkit-app-region:drag">${body}</body></html>`,
+    `<!doctype html><html><head><style>${ANIMATION_CSS}</style></head><body style="margin:0;height:100vh;display:grid;place-items:center;background:${bg()};color:${fg()};font:14px -apple-system,system-ui,'Segoe UI',sans-serif;-webkit-app-region:drag">${body}</body></html>`,
   )}`;
 const esc = (s: string) => s.replace(/[&<>]/g, (c) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'})[c]!);
 
@@ -92,7 +93,12 @@ async function open() {
     }
   });
 
-  await win.loadURL(page('Arrancando Reel Studio…'));
+  // While the server starts: the logo's loading animation (the same as the studio's, Logo.constants.ts).
+  await win.loadURL(
+    page(
+      `<div role="status" style="display:flex;flex-direction:column;align-items:center;gap:14px">${markSvg(72, true)}<span style="font-size:12px">Arrancando Reel Studio…</span></div>`,
+    ),
+  );
   try {
     await ensureServer();
     await win?.loadURL(URL);

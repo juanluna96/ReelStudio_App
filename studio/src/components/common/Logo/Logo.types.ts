@@ -5,5 +5,7 @@ export interface LogoProps {
   variant?: LogoVariant;
   /** Size of the symbol in px. */
   size?: number;
+  /** Plays the loading animation (reel breathing, spark twinkling). */
+  animated?: boolean;
   className?: string;
 }
