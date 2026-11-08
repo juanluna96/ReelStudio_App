@@ -1,0 +1,64 @@
+# CI: corre en cada PR hacia develop o main (gitflow: feature → develop → main).
+# También se puede lanzar a mano o desde otro workflow (sync-upstream.yml lo dispara sobre su rama,
+# porque los PRs que abre GITHUB_TOKEN no disparan pull_request).
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  studio:
+    name: studio (typecheck + tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: studio
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: studio/package-lock.json
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      - run: npm run typecheck
+      - run: npm test
+
+  tools:
+    name: tools (python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Compilar los scripts de Python
+        run: python -m compileall -q tools
+
+  version:
+    name: versión nueva (PR a main)
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: La versión de studio/package.json no está publicada todavía
+        run: |
+          v=$(node -p "require('./studio/package.json').version")
+          if git rev-parse -q --verify "refs/tags/v$v" >/dev/null; then
+            echo "::error file=studio/package.json::v$v ya está publicada. Sube la versión (cd studio && npm version patch|minor|major --no-git-tag-version) en el PR."
+            exit 1
+          fi
+          echo "Se publicará v$v"

@@ -1,0 +1,80 @@
+# Cada lunes trae los cambios del repo original (CrissAlvarezH/ai-reel-gen-app) y abre un PR
+# sync/upstream → develop, para revisarlos como cualquier otro cambio del gitflow.
+name: Sync upstream
+
+on:
+  schedule:
+    - cron: '0 13 * * 1' # lunes 08:00 en Colombia
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      UPSTREAM: https://github.com/CrissAlvarezH/ai-reel-gen-app.git
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - name: Traer upstream/main
+        id: fetch
+        run: |
+          git remote add upstream "$UPSTREAM"
+          git fetch upstream main
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "develop ya tiene todo upstream/main"
+            echo "changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changes=true" >> "$GITHUB_OUTPUT"
+            echo "commits=$(git rev-list --count HEAD..upstream/main)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Preparar la rama sync/upstream
+        id: branch
+        if: steps.fetch.outputs.changes == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c sync/upstream
+          # Se mezcla sobre develop para que la rama lleve nuestros workflows y el CI pueda correr en ella.
+          if git merge --no-edit upstream/main -m "sync: upstream/main → develop"; then
+            echo "conflicts=false" >> "$GITHUB_OUTPUT"
+          else
+            git merge --abort
+            git reset --hard upstream/main
+            echo "conflicts=true" >> "$GITHUB_OUTPUT"
+          fi
+          git push -f origin sync/upstream
+
+      - name: Abrir o actualizar el PR
+        if: steps.fetch.outputs.changes == 'true'
+        run: |
+          body="Cambios nuevos del repo original ($UPSTREAM): ${{ steps.fetch.outputs.commits }} commit(s)."
+          if [ "${{ steps.branch.outputs.conflicts }}" = true ]; then
+            body="$body
+
+          ⚠️ **Hay conflictos con develop.** Resuélvelos en local:
+          \`\`\`
+          git fetch origin && git switch --no-track -c sync/upstream-fix origin/develop
+          git merge upstream/main   # resolver, commit
+          git push -u origin sync/upstream-fix   # y abrir el PR hacia develop
+          \`\`\`"
+          fi
+          pr=$(gh pr list --head sync/upstream --base develop --state open --json number -q '.[0].number')
+          if [ -z "$pr" ]; then
+            gh pr create --head sync/upstream --base develop --title "sync: upstream → develop" --body "$body"
+          else
+            gh pr edit "$pr" --body "$body"
+          fi
+
+      - name: Correr el CI sobre la rama
+        if: steps.fetch.outputs.changes == 'true' && steps.branch.outputs.conflicts == 'false'
+        run: gh workflow run ci.yml --ref sync/upstream
