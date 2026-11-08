@@ -7,6 +7,7 @@
 import path from 'node:path';
 import {spawn, type ChildProcess} from 'node:child_process';
 import {app, BrowserWindow, dialog, ipcMain, shell} from 'electron';
+import {setupUpdates} from './updater.ts';
 
 const STUDIO = path.resolve(import.meta.dirname, '..');
 const PORT = Number(process.env.PORT ?? 4000);
@@ -118,7 +119,10 @@ else {
     const r = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
     return r.canceled ? null : r.filePaths[0];
   });
-  app.whenReady().then(open);
+  app.whenReady().then(() => {
+    setupUpdates(() => win); // installed app only: GitHub Releases, see desktop/updater.ts
+    return open();
+  });
   // Mac: closing the window keeps the app (and the server) in the Dock; clicking it reopens the window.
   app.on('activate', () => {
     if (!win) open();

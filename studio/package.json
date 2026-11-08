@@ -9,9 +9,9 @@
     "start": "node --disable-warning=ExperimentalWarning server/index.ts",
     "desktop": "electron desktop/main.ts",
     "typecheck": "tsc --noEmit -p . && tsc --noEmit -p tsconfig.server.json",
-    "test": "node --disable-warning=ExperimentalWarning --test server/*.test.ts",
-    "dist": "node --disable-warning=ExperimentalWarning desktop/stage.ts && electron-builder --mac --arm64",
-    "dist:dir": "node --disable-warning=ExperimentalWarning desktop/stage.ts && electron-builder --mac --arm64 --dir"
+    "test": "node --disable-warning=ExperimentalWarning --test server/*.test.ts desktop/*.test.ts",
+    "dist": "node --disable-warning=ExperimentalWarning desktop/stage.ts && electron-builder --mac --arm64 --publish never",
+    "dist:dir": "node --disable-warning=ExperimentalWarning desktop/stage.ts && electron-builder --mac --arm64 --dir --publish never"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",
@@ -95,7 +95,8 @@
       ],
       "identity": "-",
       "category": "public.app-category.video",
-      "hardenedRuntime": false
+      "hardenedRuntime": false,
+      "artifactName": "ReelStudio-${version}-${arch}.${ext}"
     }
   }
 }
