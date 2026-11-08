@@ -1,0 +1,74 @@
+# CD: cada merge publica la app de escritorio en GitHub Releases, de donde la descarga el updater
+# de la app (studio/desktop/updater.ts).
+#   main    → versión estable vX.Y.Z (la de studio/package.json; el PR develop → main debe subirla)
+#   develop → pre-release vX.Y.Z-beta.N (siguiente parche si X.Y.Z ya salió; N = número de ejecución)
+name: Release
+
+on:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14 # Apple Silicon: la app se construye para arm64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calcular versión
+        id: v
+        run: |
+          base=$(node -p "require('./studio/package.json').version")
+          if [ "$GITHUB_REF_NAME" = main ]; then
+            if git rev-parse -q --verify "refs/tags/v$base" >/dev/null; then
+              echo "::error::v$base ya está publicada: sube la versión en studio/package.json"
+              exit 1
+            fi
+            echo "version=$base" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            # Una beta debe ser mayor que la última estable: si base ya salió, la beta es del siguiente parche.
+            if git rev-parse -q --verify "refs/tags/v$base" >/dev/null; then
+              base=$(node -p "const [a,b,c]='$base'.split('.').map(Number); [a,b,c+1].join('.')")
+            fi
+            echo "version=$base-beta.$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: studio/package-lock.json
+
+      - name: Instalar dependencias
+        working-directory: studio
+        run: |
+          npm ci
+          npm version "${{ steps.v.outputs.version }}" --no-git-tag-version --allow-same-version
+
+      - name: Construir la app (.dmg y .zip)
+        working-directory: studio
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false' # firma ad-hoc ("identity": "-" en package.json)
+        run: npm run dist
+
+      - name: Publicar en GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ steps.v.outputs.version }}
+          PRE: ${{ steps.v.outputs.prerelease }}
+        run: |
+          flags=()
+          [ "$PRE" = true ] && flags+=(--prerelease) || flags+=(--latest)
+          gh release create "v$V" studio/dist/*.dmg studio/dist/*.zip \
+            --target "$GITHUB_SHA" --title "Reel Studio $V" --generate-notes "${flags[@]}"
