@@ -17,6 +17,12 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
   },
   toggleSideOpen: () => get().setSideOpen(!get().sideOpen),
 
+  sideWidth: Number(read('studio.sidebar.width', '')) || null,
+  setSideWidth: (w, keep = true) => {
+    set({sideWidth: w});
+    if (keep) write('studio.sidebar.width', w ? String(Math.round(w)) : '');
+  },
+
   chatWidth: Number(read('studio.agent.width', '')) || null,
   // keep: remember it (at the end of a drag, not on every move).
   setChatWidth: (w, keep = true) => {

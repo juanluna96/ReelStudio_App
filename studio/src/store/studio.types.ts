@@ -16,6 +16,9 @@ export type StudioState = {
   sideOpen: boolean;
   setSideOpen: (o: boolean) => void;
   toggleSideOpen: () => void;
+  // The sidebar's width when he dragged its edge (px); null: the default.
+  sideWidth: number | null;
+  setSideWidth: (w: number | null, keep?: boolean) => void;
   // The panel's width when he dragged its edge (px); null: the default for the screen.
   chatWidth: number | null;
   setChatWidth: (w: number | null, keep?: boolean) => void;

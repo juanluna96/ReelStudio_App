@@ -99,7 +99,8 @@
       "identity": "-",
       "category": "public.app-category.video",
       "hardenedRuntime": false,
-      "artifactName": "ReelStudio-${version}-${arch}.${ext}"
+      "artifactName": "ReelStudio-${version}-${arch}.${ext}",
+      "icon": "desktop/icon/icon.png"
     }
   }
 }
