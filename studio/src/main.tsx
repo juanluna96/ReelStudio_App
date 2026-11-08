@@ -21,6 +21,7 @@ import {StudioProvider, loadOpenProject, useStudio} from './studio';
 import {Welcome} from './Welcome';
 import {useSocket, workspaceApi, type WorkspaceStatus} from './api';
 import {ConfirmProvider} from './confirm';
+import './store/useThemeStore'; // follows the system theme while the preference is "system"
 import './index.css';
 
 function useHash() {
