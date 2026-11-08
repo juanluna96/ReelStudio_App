@@ -8,7 +8,7 @@ import path from 'node:path';
 import {spawn, type ChildProcess} from 'node:child_process';
 import {app, BrowserWindow, dialog, ipcMain, nativeTheme, shell} from 'electron';
 import {setupUpdates} from './updater.ts';
-import {ANIMATION_CSS, markSvg} from '../src/components/common/Logo/Logo.constants.ts';
+import {ANIMATION_CSS, CLASS, FINALE_MS, markSvg} from '../src/components/common/Logo/Logo.constants.ts';
 
 const STUDIO = path.resolve(import.meta.dirname, '..');
 const PORT = Number(process.env.PORT ?? 4000);
@@ -101,6 +101,9 @@ async function open() {
   );
   try {
     await ensureServer();
+    // Ready: the splash's finale (the play pops in, Logo.constants.ts), then the studio.
+    await win?.webContents.executeJavaScript(`document.querySelector('svg')?.classList.add('${CLASS.loaded}')`).catch(() => {});
+    await new Promise((r) => setTimeout(r, FINALE_MS));
     await win?.loadURL(URL);
   } catch (e) {
     await win?.loadURL(
