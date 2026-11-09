@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
-import {BookOpen, Bot, Brain, Briefcase, Camera, ChevronDown, Clapperboard, Code, Cpu, Dumbbell, Flame, FlaskConical, Gamepad2, Globe, GraduationCap, Heart, HeartPulse, House, Landmark, Leaf, Lightbulb, Megaphone, MessageCircle, MessageSquarePlus, Mic, MoreHorizontal, Music, Newspaper, Palette, PenTool, Pencil, PiggyBank, Plane, Plus, Rocket, Scale, Settings2, Shield, Sparkles, Star, Target, Trash2, TrendingUp, Trophy, Users, Utensils, Wallet, type LucideIcon} from 'lucide-react';
+import {BookOpen, Bot, Brain, Briefcase, Inbox, SearchX, Camera, ChevronDown, Clapperboard, Code, Cpu, Dumbbell, Flame, FlaskConical, Gamepad2, Globe, GraduationCap, Heart, HeartPulse, House, Landmark, Leaf, Lightbulb, Megaphone, MessageCircle, MessageSquarePlus, Mic, MoreHorizontal, Music, Newspaper, Palette, PenTool, Pencil, PiggyBank, Plane, Plus, Rocket, Scale, Settings2, Shield, Sparkles, Star, Target, Trash2, TrendingUp, Trophy, Users, Utensils, Wallet, type LucideIcon} from 'lucide-react';
 import {Button} from '@/components/ui/button';
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '@/components/ui/collapsible';
 import {Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle} from '@/components/ui/dialog';
@@ -10,8 +10,11 @@ import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@/c
 import {Textarea} from '@/components/ui/textarea';
 import {cn} from '@/lib/utils';
 import BoardSkeleton from '@/components/common/BoardSkeleton';
+import EmptyState from '@/components/common/EmptyState';
+import IdeasHeader from '@/components/ideas/IdeasHeader';
+import VerticalChips from '@/components/ideas/VerticalChips';
 import {IDEA_COLORS, IDEA_ICONS} from '../shared/types';
-import {ideasApi, useSocket, type Idea, type IdeaVertical, type IdeaColor, type IdeaIcon, type IdeaList, type IdeasBoard} from './api';
+import {fmtAgo, ideasApi, useSocket, type Idea, type IdeaVertical, type IdeaColor, type IdeaIcon, type IdeaList, type IdeasBoard} from './api';
 import {useConfirm} from './confirm';
 import {projectKey, read, useStudio, write} from './studio';
 
@@ -76,7 +79,7 @@ export const ICONS: Record<IdeaIcon, LucideIcon> = {
   'trophy': Trophy,
 };
 
-function VerticalIcon({icon, className}: {icon: IdeaIcon; className?: string}) {
+export function VerticalIcon({icon, className}: {icon: IdeaIcon; className?: string}) {
   const Icon = ICONS[icon] ?? Lightbulb;
   return <Icon className={cn('flex-none', className)} aria-hidden />;
 }
@@ -139,6 +142,13 @@ function wheelSideways(e: React.WheelEvent<HTMLElement>) {
   e.currentTarget.scrollLeft += e.deltaY;
 }
 
+// The search: every word, in the title or the notes, ignoring case and accents.
+const fold = (t: string) => t.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+function matches(card: Idea, words: string[]) {
+  const text = fold(`${card.title} ${card.notes}`);
+  return words.every((w) => text.includes(w));
+}
+
 /* ───── The page ───── */
 
 export function Ideas() {
@@ -159,6 +169,8 @@ export function Ideas() {
   const [over, setOver] = useState<Over | null>(null);
   const [openCard, setOpenCard] = useState<string | null>(null);
   const [verticalDialog, setVerticalDialog] = useState<IdeaVertical | 'new' | null>(null);
+  const [query, setQuery] = useState('');
+  const words = fold(query).split(/\s+/).filter(Boolean);
 
   // Only the answer to the last request counts: an older one would undo a move just made on the page.
   const last = useRef(0);
@@ -247,24 +259,42 @@ export function Ideas() {
     if (ok) void apply(() => ideasApi.removeList(list.id));
   };
 
+  // What each list shows: the vertical filter and the search, together.
+  const visible = (cards: Idea[]) => cards.filter((c) => (!filter || c.vertical === filter) && (!words.length || matches(c, words)));
+  const all = board.lists.flatMap((l) => l.cards);
+  const shown = visible(all).length;
+  const counts = Object.fromEntries(board.verticals.map((v) => [v.id, all.filter((c) => c.vertical === v.id).length]));
+  // «Nueva idea»: in the first list (with the vertical being filtered), opened right away to write it.
+  const newIdea = async () => {
+    const first = board.lists[0];
+    if (!first) return;
+    const before = new Set(first.cards.map((c) => c.id));
+    try {
+      const b = await ideasApi.addCard({title: 'Nueva idea', list: first.id, vertical: filter});
+      setBoard(b);
+      const made = b.lists.find((l) => l.id === first.id)?.cards.find((c) => !before.has(c.id));
+      if (made) setOpenCard(made.id);
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  };
+
   const listLine = over?.kind === 'list' && drag?.kind === 'list' && !staysPut(board.lists, drag.id, over.before) ? over.before : undefined;
   return (
-    <main className={cn('flex min-h-full flex-col gap-4 p-6 transition-colors md:h-full', active && 'vertical-page')} style={active ? ({'--vertical': COLORS[active.color].page} as React.CSSProperties) : undefined}>
-      <section aria-label="Verticales de contenido" className={cn('flex flex-none flex-col gap-1.5', active && 'vertical-theme')}>
-        <h2 className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">Verticales de contenido</h2>
-        <div className="visible-scroll flex gap-2 overflow-x-auto pb-1" onWheel={wheelSideways}>
-          {board.verticals.map((v) => (
-            <VerticalCard key={v.id} vertical={v} active={filter === v.id} dimmed={!!filter && filter !== v.id} onToggle={() => setFilter(filter === v.id ? null : v.id)} onEdit={() => setVerticalDialog(v)} />
-          ))}
-          <button onClick={() => setVerticalDialog('new')} className="flex min-h-[42px] flex-none items-center justify-center gap-1.5 rounded-lg border border-dashed px-3 text-sm text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground">
-            <Plus className="size-4" /> Vertical
-          </button>
-        </div>
-      </section>
+    // The page fills the window below the header (the board scrolls inside), so a vertical's colour covers all of it.
+    <main className={cn('flex min-h-[calc(100vh-3.5rem)] flex-col gap-4 p-6 transition-colors md:h-[calc(100vh-3.5rem)]', active && 'vertical-page')} style={active ? ({'--vertical': COLORS[active.color].page} as React.CSSProperties) : undefined}>
+      <div className={cn('flex flex-none flex-col gap-4', active && 'vertical-theme')}>
+        <IdeasHeader total={all.length} lists={board.lists.length} query={query} onQuery={setQuery} shown={shown} filtering={!!filter || words.length > 0} onNewIdea={newIdea} />
+        <VerticalChips verticals={board.verticals} counts={counts} total={all.length} filter={filter} onFilter={setFilter} onEdit={setVerticalDialog} onNew={() => setVerticalDialog('new')} />
+      </div>
 
       {err && <p className="text-sm text-destructive">{err}</p>}
 
-      <div className="visible-scroll flex min-h-0 flex-1 gap-3 overflow-x-auto pb-2" onWheel={wheelSideways} onDragOver={overBoard} onDrop={drop}>
+      {words.length > 0 && shown === 0 && (
+        <EmptyState icon={SearchX} title={`Ninguna idea coincide con «${query.trim()}»`} description={filter ? 'Prueba con otras palabras, o quita el filtro de la vertical.' : 'Prueba con otras palabras.'} action={<Button variant="secondary" onClick={() => setQuery('')}>Borrar la búsqueda</Button>} className="flex-none" />
+      )}
+
+      <div className={cn('visible-scroll flex min-h-0 flex-1 gap-3 overflow-x-auto pb-2', words.length > 0 && shown === 0 && 'hidden')} onWheel={wheelSideways} onDragOver={overBoard} onDrop={drop}>
         {board.lists.map((list) => (
           <div key={list.id} data-list data-id={list.id} className="relative flex w-72 flex-none">
             {listLine === list.id && <span className="absolute inset-y-0 -left-[7px] w-0.5 rounded bg-primary" />}
@@ -272,6 +302,7 @@ export function Ideas() {
               list={list}
               board={board}
               filter={filter}
+              cards={visible(list.cards)}
               drag={drag}
               over={over?.kind === 'card' && over.list === list.id ? over : null}
               onDragOver={(e) => overList(e, list.id)}
@@ -297,23 +328,6 @@ export function Ideas() {
 }
 
 /* ───── Verticals ───── */
-
-// Its icon and name. Clicking it filters the board; its description shows on hover. Editing it: once selected, on hover.
-function VerticalCard({vertical: v, active, dimmed, onToggle, onEdit}: {vertical: IdeaVertical; active: boolean; dimmed: boolean; onToggle: () => void; onEdit: () => void}) {
-  return (
-    <div className={cn('group relative max-w-72 min-w-0 flex-none rounded-lg border transition-opacity', COLORS[v.color].badge, active && 'ring-2 ring-foreground/40 ring-inset', dimmed && 'opacity-50 hover:opacity-100')}>
-      <button onClick={onToggle} aria-pressed={active} title={v.description || undefined} className="flex size-full items-center gap-2 rounded-lg py-2 pr-9 pl-3 text-left">
-        <VerticalIcon icon={v.icon} className="size-6" />
-        <span className="truncate text-sm font-medium">{v.name}</span>
-      </button>
-      {active && (
-        <button onClick={onEdit} aria-label={`Editar la vertical ${v.name}`} title="Editar la vertical" className="absolute top-1/2 right-2 -translate-y-1/2 rounded-md p-1 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-background/40 focus-visible:opacity-100">
-          <Pencil className="size-3.5" />
-        </button>
-      )}
-    </div>
-  );
-}
 
 function VerticalDialog({vertical, board, onClose, apply}: {vertical: IdeaVertical | null; board: IdeasBoard; onClose: () => void; apply: (r: () => Promise<IdeasBoard>) => Promise<void>}) {
   const confirm = useConfirm();
@@ -392,6 +406,8 @@ function Column(p: {
   list: IdeaList;
   board: IdeasBoard;
   filter: string | null;
+  /** The cards it shows (filtered by vertical and search). */
+  cards: Idea[];
   drag: Drag | null;
   over: Extract<Over, {kind: 'card'}> | null;
   onDragOver: (e: React.DragEvent<HTMLElement>) => void;
@@ -402,9 +418,8 @@ function Column(p: {
   onRename: (name: string) => Promise<void>;
   onRemove: () => void;
 }) {
-  const {list, board, filter, drag, over} = p;
+  const {list, board, filter, cards, drag, over} = p;
   const [renaming, setRenaming] = useState(false);
-  const cards = filter ? list.cards.filter((c) => c.vertical === filter) : list.cards;
   // The line that says where the card would land, unless that's where it already is.
   const line = over && drag?.kind === 'card' && !staysPut(list.cards, drag.id, over.before) ? over.before : undefined;
   const scroller = useRef<HTMLDivElement>(null);
@@ -433,7 +448,7 @@ function Column(p: {
             {list.name}
           </h2>
         )}
-        <span className="flex-none text-xs text-muted-foreground tabular-nums">{filter ? `${cards.length}/${list.cards.length}` : list.cards.length}</span>
+        <span className="flex-none rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground tabular-nums">{cards.length === list.cards.length ? list.cards.length : `${cards.length}/${list.cards.length}`}</span>
         <DropdownMenu>
           <DropdownMenuTrigger aria-label={`Opciones de la lista ${list.name}`} className="-mr-1 flex-none rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
             <MoreHorizontal className="size-4" />
@@ -455,6 +470,7 @@ function Column(p: {
             key={card.id}
             card={card}
             verticals={filter ? [] : board.verticals} // filtered, they'd all repeat the same tag
+            color={board.verticals.find((v) => v.id === card.vertical)?.color}
             dragging={drag?.kind === 'card' && drag.id === card.id}
             lineAbove={line === card.id}
             lineBelow={line === null && i === cards.length - 1}
@@ -464,6 +480,13 @@ function Column(p: {
           />
         ))}
         {!cards.length && line === null && <span className="h-0.5 flex-none rounded bg-primary" />}
+        {/* Empty: says so, and that ideas can be dropped here (hidden while one is dragged over it: the line shows instead). */}
+        {!cards.length && line !== null && (
+          <div className="flex flex-col items-center gap-1.5 rounded-lg border border-dashed px-3 py-6 text-center text-xs text-muted-foreground">
+            <Inbox className="size-5 opacity-60" aria-hidden />
+            {list.cards.length ? 'Ninguna coincide' : 'Sin ideas · arrastra una aquí'}
+          </div>
+        )}
       </div>
 
       <div className="p-2 pt-1">
@@ -473,7 +496,7 @@ function Column(p: {
   );
 }
 
-function Card({card, verticals, dragging, lineAbove, lineBelow, onOpen, onDragStart, onDragEnd}: {card: Idea; verticals: IdeaVertical[]; dragging: boolean; lineAbove: boolean; lineBelow: boolean; onOpen: () => void; onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void}) {
+function Card({card, verticals, color, dragging, lineAbove, lineBelow, onOpen, onDragStart, onDragEnd}: {card: Idea; verticals: IdeaVertical[]; color?: IdeaColor; dragging: boolean; lineAbove: boolean; lineBelow: boolean; onOpen: () => void; onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void}) {
   const own = verticals.find((v) => v.id === card.vertical);
   return (
     <div className="relative flex-none">
@@ -494,16 +517,23 @@ function Card({card, verticals, dragging, lineAbove, lineBelow, onOpen, onDragSt
             onOpen();
           }
         }}
-        className={cn('flex cursor-grab flex-col gap-1.5 rounded-lg border bg-card p-2.5 transition-colors hover:border-foreground/30 active:cursor-grabbing', dragging && 'opacity-40')}
+        className={cn(
+          'animate-fade-in relative flex cursor-grab flex-col gap-1.5 overflow-hidden rounded-lg border bg-card p-2.5 shadow-xs transition-all duration-150 hover:-translate-y-px hover:border-foreground/25 hover:shadow-md focus-visible:outline-2 focus-visible:outline-ring active:cursor-grabbing',
+          color && 'pl-3.5',
+          dragging && 'opacity-40',
+        )}
       >
+        {/* The vertical's colour down the left edge, so the board reads by vertical at a glance (also when filtered). */}
+        {color && <span aria-hidden className={cn('absolute inset-y-0 left-0 w-1', COLORS[color].dot)} />}
         {own && (
           <span className={cn('inline-flex h-4 w-fit max-w-full items-center gap-1 rounded-full border px-1.5 text-[10px] font-medium whitespace-nowrap', COLORS[own.color].badge)}>
             <VerticalIcon icon={own.icon} className="size-2.5" />
             <span className="truncate">{own.name}</span>
           </span>
         )}
-        <p className="text-sm break-words">{card.title}</p>
-        {card.notes && <p className="line-clamp-3 text-xs break-words whitespace-pre-line text-muted-foreground">{card.notes}</p>}
+        <p className="text-sm leading-snug font-medium break-words">{card.title}</p>
+        {card.notes && <p className="line-clamp-2 text-xs break-words whitespace-pre-line text-muted-foreground">{card.notes}</p>}
+        {!!card.updated && <span className="self-end text-[11px] text-muted-foreground/80" title={`Editada ${new Date(card.updated).toLocaleString('es')}`}>{fmtAgo(card.updated)}</span>}
       </div>
     </div>
   );
