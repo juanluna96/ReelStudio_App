@@ -226,6 +226,60 @@ const HOME = os.homedir();
 let claudePath: string | null = null;
 let claudeStatus: AgentCliStatus | null = null;
 
+/* ───── Which Claude account ───── */
+
+// Claude Code keeps its login (and sessions, settings) in a config folder: ~/.claude, or CLAUDE_CONFIG_DIR. The studio
+// can use an account of its own, in SEPARATE_CLAUDE_DIR, so the one in the terminal (for coding) stays as it is. Every
+// claude it starts inherits process.env, so setting it there is enough. Once chosen in Ajustes, the choice wins:
+// «the terminal's» is always ~/.claude, even if the studio was started with CLAUDE_CONFIG_DIR (a shell alias); never
+// chosen, that variable is kept.
+const SHELL_CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR || null;
+export const SEPARATE_CLAUDE_DIR = path.join(HOME, '.claude-reelstudio');
+export const DEFAULT_CLAUDE_DIR = path.join(HOME, '.claude');
+export const claudeDir = () => process.env.CLAUDE_CONFIG_DIR || DEFAULT_CLAUDE_DIR;
+function applyClaudeAccount() {
+  const chosen = appConfig().claudeSeparate;
+  const dir = chosen === true ? SEPARATE_CLAUDE_DIR : chosen === false ? null : SHELL_CLAUDE_DIR;
+  if (dir) process.env.CLAUDE_CONFIG_DIR = dir;
+  else delete process.env.CLAUDE_CONFIG_DIR;
+}
+applyClaudeAccount();
+
+export const claudeAccount = () => ({separate: claudeDir() !== DEFAULT_CLAUDE_DIR, dir: claudeDir()});
+export function setClaudeSeparate(on: boolean) {
+  setAppConfig({claudeSeparate: !!on});
+  applyClaudeAccount();
+  claudeStatus = null; // another account: check it again, and its plan's usage
+  usageCache.delete('claude');
+  return claudeAccount();
+}
+
+// A terminal with claude open on the studio's account: to log in, or to accept new terms (it asks on start).
+export function openClaudeTerminal() {
+  const dir = claudeDir();
+  const bin = claudePath ?? 'claude';
+  const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
+  if (process.platform === 'darwin') {
+    const cmd = `clear; echo 'Reel Studio · cuenta de Claude en ${dir.replace(/'/g, '')}'; CLAUDE_CONFIG_DIR=${quote(dir)} ${quote(bin)}`;
+    // AppleScript strings escape " and \ like JSON does.
+    spawn('osascript', ['-e', 'tell application "Terminal"', '-e', 'activate', '-e', `do script ${JSON.stringify(cmd)}`, '-e', 'end tell'], {detached: true, stdio: 'ignore'}).unref();
+  } else if (IS_WIN) {
+    spawn('cmd.exe', ['/c', 'start', 'cmd.exe', '/k', `set CLAUDE_CONFIG_DIR=${dir}&& "${bin}"`], {detached: true, stdio: 'ignore'}).unref();
+  } else {
+    spawn('x-terminal-emulator', ['-e', 'sh', '-c', `CLAUDE_CONFIG_DIR=${quote(dir)} ${quote(bin)}; exec sh`], {detached: true, stdio: 'ignore'}).unref();
+  }
+  return {opened: true, dir};
+}
+
+// What a failing claude said, in his words when it's something he has to do (new terms to accept, no login).
+export function explainClaudeError(text: string): string | null {
+  if (/updated terms|Consumer Terms|review the updated/i.test(text))
+    return 'Claude necesita que aceptes sus términos actualizados. Ve a Ajustes → Agente, pulsa «Abrir Claude en Terminal», acéptalos allí y vuelve a enviar el mensaje.';
+  if (/not logged in|please run \/login|invalid api key|OAuth token has expired/i.test(text))
+    return 'Claude no tiene la sesión iniciada en esta cuenta. Ve a Ajustes → Agente y pulsa «Abrir Claude en Terminal» para iniciar sesión.';
+  return null;
+}
+
 export const claude: AgentCli = {
   id: 'claude',
   label: 'Claude Code',
@@ -360,7 +414,7 @@ export const claude: AgentCli = {
         unhook();
         if (signal?.aborted) return reject(new Error('detenido'));
         const r = jsonLines(out).find((e) => e.type === 'result') as {is_error?: boolean; result?: string} | undefined;
-        if (!r) return reject(new Error(err.trim().split('\n').pop() || 'respuesta ilegible de claude'));
+        if (!r) return reject(new Error(explainClaudeError(`${out}\n${err}`) ?? (err.trim().split('\n').pop() || 'respuesta ilegible de claude')));
         if (r.is_error) return reject(new Error(r.result || 'claude devolvió un error'));
         const init = jsonLines(out).find((e) => e.type === 'system' && typeof (e as {model?: unknown}).model === 'string') as {model: string} | undefined;
         onModel?.(init?.model ?? alias);
@@ -405,7 +459,7 @@ export const claude: AgentCli = {
   commands() {
     // The list the last session gave (skills, plugins, built-ins); before any, the built-ins below and the
     // skills and commands on disk. Descriptions from their SKILL.md / command file.
-    const disk = scanCommands([...(ROOT ? [path.join(ROOT, '.claude')] : []), path.join(HOME, '.claude')]);
+    const disk = scanCommands([...(ROOT ? [path.join(ROOT, '.claude')] : []), claudeDir()]);
     const names = appConfig().claudeCommands ?? [...Object.keys(CLAUDE_BUILTINS), ...disk.keys()];
     return names
       .filter((n) => !CLAUDE_HIDDEN.has(n) && !n.startsWith('_'))

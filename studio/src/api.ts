@@ -1,5 +1,5 @@
 import {useEffect, useRef, useState} from 'react';
-import type {AutomationAgent, Audience, AudienceLevels, AudienceWant, PillarSet, ScriptCheckState, HookCheckState, CheckModels, WantOption, Agent, AgentChoice, AgentUsage, AutomationInput, AutomationsView, Beat, IdeaColor, IdeaIcon, IdeaRef, IdeasBoard, ImageSources, InspirationList, InspirationReel, InspirationRef, InspirationStatus, Profile, ReelFormat, Requirement, Style, StyleRef, ChatList, ChatOptions, SocialSourceId, Voice, VoiceModel, VoiceOption, VoiceRef, VoiceSample, ChatState, Comment, ReelDetail, ReelSummary, ServerEvent, Settings, SourceItem, SourceItemDetail, SourceItemList, SourceItemState, SourcesView} from '../shared/types';
+import type {AutomationAgent, Audience, AudienceLevels, AudienceWant, PillarSet, ScriptCheckState, HookCheckState, CheckModels, WantOption, Agent, AgentChoice, AgentUsage, AutomationInput, ClaudeAccount, AutomationsView, Beat, IdeaColor, IdeaIcon, IdeaRef, IdeasBoard, ImageSources, InspirationList, InspirationReel, InspirationRef, InspirationStatus, Profile, ReelFormat, Requirement, Style, StyleRef, ChatList, ChatOptions, SocialSourceId, Voice, VoiceModel, VoiceOption, VoiceRef, VoiceSample, ChatState, Comment, ReelDetail, ReelSummary, ServerEvent, Settings, SourceItem, SourceItemDetail, SourceItemList, SourceItemState, SourcesView} from '../shared/types';
 
 export type * from '../shared/types';
 
@@ -203,6 +203,10 @@ export const settingsApi = {
   // The coding-agent CLIs installed on this machine (path, version, login) and the one in use. refresh re-checks them.
   agents: (refresh = false) => fetch(`/api/settings/agents${refresh ? '?refresh=1' : ''}`).then((r) => json<AgentChoice>(r)),
   setAgent: (id: string) => put<AgentChoice>('/api/settings/agent', {id}),
+  // Which Claude account the studio uses (its own, or the terminal's), and a terminal on it to log in or accept terms.
+  claudeAccount: () => fetch('/api/settings/claude-account').then((r) => json<ClaudeAccount>(r)),
+  setClaudeSeparate: (separate: boolean) => put<ClaudeAccount>('/api/settings/claude-account', {separate}),
+  openClaudeTerminal: () => post('/api/settings/claude-account/terminal') as Promise<{opened: boolean; dir: string}>,
   chrome: () => fetch('/api/settings/chrome').then((r) => json<{enabled: boolean}>(r)),
   setChrome: (enabled: boolean) => put<{enabled: boolean}>('/api/settings/chrome', {enabled}),
   agentUsage: (id: string, refresh = false) => fetch(`/api/settings/agents/${encodeURIComponent(id)}/usage${refresh ? '?refresh=1' : ''}`).then((r) => json<AgentUsage>(r)),

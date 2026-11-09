@@ -64,7 +64,8 @@ const isDir = (p: string) => {
 // chat: the model and effort last chosen in a conversation, per agent (new conversations start with it).
 // claudeCommands: the slash commands Claude Code's last session listed.
 // projects: the project open last in each workspace (by its path).
-type AppConfig = {workspace?: string; projects?: Record<string, string>; agent?: string; chat?: Record<string, {model: string; effort: string}>; claudeCommands?: string[]};
+// claudeSeparate: the studio uses its own Claude account (server/agent.ts), not the one of the terminal.
+type AppConfig = {workspace?: string; projects?: Record<string, string>; agent?: string; chat?: Record<string, {model: string; effort: string}>; claudeCommands?: string[]; claudeSeparate?: boolean};
 const readConfig = (): AppConfig => {
   try {
     return JSON.parse(fs.readFileSync(APP_CONFIG, 'utf8'));

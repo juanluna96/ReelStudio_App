@@ -7,7 +7,7 @@ import path from 'node:path';
 import type {ChildProcess} from 'node:child_process';
 import {ROOT, VIDEOS, formatOf, httpError, listSlugs, styleOf, summary, title as videoTitle, videoFormatOf} from './reels.ts';
 import {CONFIG, DATA, PROJECT, PROJECT_DIR, projectName, rel as relPath, resource} from './workspace.ts';
-import {AGENTS, EFFORT_LABELS, agentById, agentCli, currentAgent, type AgentCli, type AgentEvent} from './agent.ts';
+import {AGENTS, DEFAULT_CLAUDE_DIR, EFFORT_LABELS, agentById, agentCli, claudeDir, currentAgent, explainClaudeError, type AgentCli, type AgentEvent} from './agent.ts';
 import {IS_WIN, PY, VENV_BIN, readJson, writeJson} from './platform.ts';
 import {getKey} from './settings.ts';
 import {authorName, formatText, getChromeAccess, getImageSources, getProfile, getVoice, lastChatChoice, setLastChatChoice, videoVoice} from './config.ts';
@@ -38,7 +38,8 @@ const projectLine = () => `Proyecto abierto: «${projectName()}» (${relPath(PRO
 // agent: the CLI whose session sessionId is (missing: Claude Code, from before there was a choice).
 // model / effort: chosen in its message box ('' = the CLI's default). context: how full it was after its last turn.
 // briefing: it just moved to a video, so its next turn is told the video's instructions; moveTold: its agent knows it can move.
-type Chat = {id: string; sessionId: string | null; agent?: string; items: ChatItem[]; created: number; seenAt?: number; closed?: boolean; model?: string; effort?: string; mode?: string; context?: ChatContext; briefing?: boolean; moveTold?: boolean};
+// account: for Claude Code, the config folder (so, the account) its session lives in (server/agent.ts claudeDir).
+type Chat = {id: string; sessionId: string | null; agent?: string; account?: string; items: ChatItem[]; created: number; seenAt?: number; closed?: boolean; model?: string; effort?: string; mode?: string; context?: ChatContext; briefing?: boolean; moveTold?: boolean};
 type Store = {active: string; chats: Chat[]};
 // stopped: the studio asked it to stop (the CLI may still exit with code 0 and no signal).
 // said: it wrote some reply (a local command like /cost may only answer in the result).
@@ -755,8 +756,11 @@ export function send(key: string, {text, comments, refs: rawRefs, ideas: rawIdea
   // session of this one, which gets what was said so far as text.
   const cli = unattended?.agent ? agentById(unattended.agent) : currentAgent();
   const prev = find(load(key), chat);
-  const resume = prev.sessionId && agentById(prev.agent).id === cli.id ? prev.sessionId : null;
-  const handover = prev.sessionId && !resume ? handoverText(prev, agentById(prev.agent).label) : '';
+  // Same for Claude Code under another account (Ajustes → Agente): the session is in the other account's folder.
+  const account = cli.id === 'claude' ? claudeDir() : undefined;
+  const sameAccount = cli.id !== 'claude' || (prev.account ?? DEFAULT_CLAUDE_DIR) === account;
+  const resume = prev.sessionId && agentById(prev.agent).id === cli.id && sameAccount ? prev.sessionId : null;
+  const handover = prev.sessionId && !resume ? handoverText(prev, sameAccount ? agentById(prev.agent).label : `${agentById(prev.agent).label} (con otra cuenta)`) : '';
   // A slash command (/compact, /context, a skill…) goes as it is: the CLI only reads one at the start of the prompt.
   const slash = /^\/[^\s/]/.test(text?.trim() ?? '') && !comments?.length && !refs.length && !ideaRefs.length && !images.length && !files.length;
   // A resumed session keeps the system prompt it started with (Claude Code ignores a new one): what changed goes in the prompt.
@@ -828,6 +832,8 @@ export function send(key: string, {text, comments, refs: rawRefs, ideas: rawIdea
       try {
         raw = JSON.parse(line);
       } catch {
+        // Plain text (a notice the CLI printed instead of its stream): kept with stderr, to explain an error.
+        if (line.trim()) run.stderr = (run.stderr + line + '\n').slice(-4000);
         continue;
       }
       for (const ev of cli.parse(raw)) safe(() => handle(ev));
@@ -838,7 +844,7 @@ export function send(key: string, {text, comments, refs: rawRefs, ideas: rawIdea
   function handle(ev: AgentEvent) {
     switch (ev.kind) {
       case 'session': {
-        const changed = ed((c) => (c.sessionId !== ev.id || c.agent !== cli.id) && ((c.sessionId = ev.id), (c.agent = cli.id), true));
+        const changed = ed((c) => (c.sessionId !== ev.id || c.agent !== cli.id || c.account !== account) && ((c.sessionId = ev.id), (c.agent = cli.id), (c.account = account), true));
         if (changed) {
           tell({op: 'session', sessionId: ev.id, resume: cli.resumeCommand(ev.id)});
           tellList(); // its tab's logo
@@ -935,7 +941,9 @@ export function send(key: string, {text, comments, refs: rawRefs, ideas: rawIdea
     if (signal || run.stopped) push({id: id(), role: 'status', text: `Detenido · ${fmt(secs)}`, ts: Date.now()});
     else if (!r?.ok) {
       const tail = run.stderr ? `\n${run.stderr.trim().split('\n').slice(-5).join('\n')}` : '';
-      push({id: id(), role: 'status', text: `Error${r?.text ? `: ${r.text}` : ` (código ${code})`}${tail}`, error: true, ts: Date.now()});
+      // Something he has to do (new terms to accept, log in again): said plainly instead of the CLI's output.
+      const plain = explainClaudeError(`${r?.text ?? ''}\n${run.stderr ?? ''}`);
+      push({id: id(), role: 'status', text: plain ?? `Error${r?.text ? `: ${r.text}` : ` (código ${code})`}${tail}`, error: true, ts: Date.now()});
     }
     tell({op: 'state', running: false});
     tellList();

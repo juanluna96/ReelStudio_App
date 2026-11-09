@@ -325,6 +325,8 @@ export type KeyStatus = {
   check: {ok: boolean; info: string; at: number} | null;
 };
 export type Settings = {mode: 'local' | 'account'; keys: KeyStatus[]};
+// The Claude account the studio uses: its own (separate, in ~/.claude-reelstudio) or the terminal's; dir: its config folder.
+export type ClaudeAccount = {separate: boolean; dir: string};
 
 // The coding-agent CLI the studio drives: the one installed on this machine, with its own login.
 export type AgentCliStatus = {

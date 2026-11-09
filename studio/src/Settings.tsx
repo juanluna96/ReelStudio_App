@@ -8,6 +8,7 @@ import {Input} from '@/components/ui/input';
 import {Progress} from '@/components/ui/progress';
 import {Skeleton} from '@/components/ui/skeleton';
 import {cn} from '@/lib/utils';
+import ClaudeAccount from '@/components/settings/ClaudeAccount';
 import {IMAGE_SOURCES, SOCIAL_SOURCES, type ImageSources, type ProjectContents, type SocialSourceId, type Voice} from '../shared/types';
 import {Switch} from '@/components/ui/switch';
 import {accountApi, fmtAgo, imagesApi, noteAgent, projectsApi, socialApi, settingsApi, voiceApi, workspaceApi, type WorkspaceStatus, type AgentChoice, type AgentUsage, type KeyStatus, type Project, type Settings as SettingsT} from './api';
@@ -395,6 +396,14 @@ export function AgentCard({chrome = false}: {chrome?: boolean}) {
                 </div>
               </div>
               {ok && <AgentUsageView id={a.id} checks={checks} />}
+              {a.id === 'claude' && (
+                <ClaudeAccount
+                  onChanged={() => {
+                    setChecks((n) => n + 1); // the usage too: it's the other account's now
+                    void act(() => settingsApi.agents(true));
+                  }}
+                />
+              )}
               {chrome && a.id === 'claude' && <ChromeAccess />}
             </div>
           );

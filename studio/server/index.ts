@@ -16,7 +16,7 @@ import * as skills from './skills.ts';
 import * as config from './config.ts';
 import * as voice from './voice.ts';
 import {create, installing} from './create.ts';
-import {AGENTS, agentUsage, currentAgent, setAgent} from './agent.ts';
+import {AGENTS, agentUsage, claudeAccount, currentAgent, openClaudeTerminal, setAgent, setClaudeSeparate} from './agent.ts';
 import * as beats from './beats.ts';
 import {listStyles, isStyleFile} from './styles.ts';
 import {listFormats, isFormatFile} from './formats.ts';
@@ -341,6 +341,11 @@ const agents = async (refresh = false) => ({current: currentAgent().id, agents: 
 app.get('/api/settings/agents', handle((req) => agents(req.query.refresh === '1')));
 app.get('/api/settings/agents/:id/usage', handle((req) => agentUsage(req.params.id, req.query.refresh === '1')));
 app.put('/api/settings/agent', handle((req) => (setAgent(String(req.body?.id)), agents())));
+// Which Claude account the studio uses: the terminal's, or one of its own (server/agent.ts); and a terminal on it,
+// to log in or accept new terms.
+app.get('/api/settings/claude-account', handle(() => claudeAccount()));
+app.put('/api/settings/claude-account', handle((req) => setClaudeSeparate(req.body?.separate === true)));
+app.post('/api/settings/claude-account/terminal', handle(() => openClaudeTerminal()));
 app.get('/api/settings/chrome', handle(() => ({enabled: config.getChromeAccess()})));
 app.put('/api/settings/chrome', handle((req) => ({enabled: config.setChromeAccess(req.body?.enabled)})));
 
