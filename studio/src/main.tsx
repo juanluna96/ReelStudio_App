@@ -6,6 +6,7 @@ import {TooltipProvider} from '@/components/ui/tooltip';
 import Logo from '@/components/common/Logo';
 import {FINALE_MS} from '@/components/common/Logo/Logo.constants';
 import ThemeToggle from '@/components/common/ThemeToggle';
+import ImageLightbox from '@/components/common/ImageLightbox';
 import {cn} from '@/lib/utils';
 import {Library} from './Library';
 import {Ideas} from './Ideas';
@@ -197,6 +198,8 @@ void loadOpenProject().then(() => createRoot(document.getElementById('root')!).r
     <TooltipProvider>
       <ConfirmProvider>
         <Root />
+        {/* The image viewer, opened from anywhere (store/useLightboxStore.ts). */}
+        <ImageLightbox />
       </ConfirmProvider>
     </TooltipProvider>
   </StrictMode>,

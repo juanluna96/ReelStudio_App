@@ -10,6 +10,7 @@ import {DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
 import {Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue} from '@/components/ui/select';
 import {Tabs, TabsContent, TabsList, TabsTrigger} from '@/components/ui/tabs';
 import {Textarea} from '@/components/ui/textarea';
+import {useLightboxStore} from '@/store/useLightboxStore';
 import {Input} from '@/components/ui/input';
 import {Label} from '@/components/ui/label';
 import {cn} from '@/lib/utils';
@@ -672,7 +673,8 @@ function Assets({reel}: {reel: ReelDetail}) {
       /* private mode */
     }
   };
-  const [zoom, setZoom] = useState<string | null>(null);
+  // Opens the viewer (components/common/ImageLightbox) on u, with the rest of its set a ← → away.
+  const setZoom = (u: string, set: string[] = [u]) => useLightboxStore.getState().open(set, set.indexOf(u));
   useStudio().uiRef.current.tab = {cut: 'Recortes', boards: 'Boards y sheets', credits: 'Créditos', caption: 'Caption IG', thumbnail: 'Miniatura', automation: 'Instrucciones automatización'}[tab];
 
   return (
@@ -698,7 +700,7 @@ function Assets({reel}: {reel: ReelDetail}) {
               // Grey backdrop on purpose: the skill checks every cutout on a grey board.
               <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3 rounded-lg bg-neutral-500 p-3">
                 {reel.cutouts.map((c) => (
-                  <figure key={c.url} onClick={() => setZoom(c.url)} className="cursor-zoom-in">
+                  <figure key={c.url} onClick={() => setZoom(c.url, reel.cutouts.map((x) => x.url))} className="cursor-zoom-in">
                     <img src={c.url} alt={c.name} loading="lazy" className="aspect-square w-full object-contain" />
                     <figcaption className="mt-1 text-center text-xs text-white">{c.name}</figcaption>
                   </figure>
@@ -723,17 +725,11 @@ function Assets({reel}: {reel: ReelDetail}) {
           </TabsContent>
         </Tabs>
       </CardContent>
-      <Dialog open={!!zoom} onOpenChange={(o) => !o && setZoom(null)}>
-        <DialogContent className="max-h-[92vh] max-w-[92vw] p-2 sm:max-w-[92vw]">
-          <DialogTitle className="sr-only">Imagen</DialogTitle>
-          {zoom && <img src={zoom} alt="" className="mx-auto max-h-[86vh] w-auto object-contain" />}
-        </DialogContent>
-      </Dialog>
     </Card>
   );
 }
 
-function Boards({reel, onZoom}: {reel: ReelDetail; onZoom: (u: string) => void}) {
+function Boards({reel, onZoom}: {reel: ReelDetail; onZoom: (u: string, set?: string[]) => void}) {
   if (!reel.boards.length) return <p className="text-sm text-muted-foreground">Sin imágenes en out/ todavía.</p>;
   return (
     <div className="flex flex-col gap-1">
@@ -751,7 +747,7 @@ function Boards({reel, onZoom}: {reel: ReelDetail; onZoom: (u: string) => void})
           <CollapsibleContent>
             <div className="flex gap-3 overflow-x-auto pt-1 pb-3">
               {g.images.map((u) => (
-                <figure key={u} onClick={() => onZoom(u)} className="flex-none cursor-zoom-in">
+                <figure key={u} onClick={() => onZoom(u, g.images)} className="flex-none cursor-zoom-in">
                   <img src={u} alt="" loading="lazy" className="h-64 w-auto rounded-md border bg-muted" />
                   <figcaption className="mt-1 text-xs text-muted-foreground">{decodeURIComponent(u.split('/').pop()!)}</figcaption>
                 </figure>
@@ -857,7 +853,7 @@ function CaptionTab({reel}: {reel: ReelDetail}) {
 
 // The cover (out/miniatura.png, next to the renders) as it shows in the reel (9:16) and as the profile grid crops it (3:4, centred), next to how the
 // video's style says its thumbnails look (style.json "thumbnail").
-function ThumbnailTab({reel, onZoom}: {reel: ReelDetail; onZoom: (u: string) => void}) {
+function ThumbnailTab({reel, onZoom}: {reel: ReelDetail; onZoom: (u: string, set?: string[]) => void}) {
   const style = useStyles()?.find((s) => s.id === reel.style?.id);
   const t = reel.thumbnail;
   const guide = style?.thumbnail;

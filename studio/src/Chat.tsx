@@ -5,6 +5,7 @@ import {ArrowUp, Check, History, Lightbulb, Paperclip, Loader2, PanelRightClose,
 import {Button} from '@/components/ui/button';
 import {cn} from '@/lib/utils';
 import AttachmentChip from '@/components/chat/AttachmentChip';
+import {useLightboxStore} from '@/store/useLightboxStore';
 import {ACCEPT, MAX_FILES, MAX_MB} from '@/components/chat/AttachmentChip/AttachmentChip.constants';
 import {kindOf} from '@/components/chat/AttachmentChip/AttachmentChip.utils';
 import ListSkeleton from '@/components/common/ListSkeleton';
@@ -115,9 +116,9 @@ function Item({item, slug, onSeek, onPermission}: {item: ChatItem; slug: string 
             <ul className="flex flex-wrap gap-1.5">
               {item.images.map((n) => (
                 <li key={n}>
-                  <a href={chatApi.imageUrl(n)} target="_blank" rel="noreferrer" title="Abrir la imagen">
+                  <button type="button" onClick={() => useLightboxStore.getState().open(item.images!.map(chatApi.imageUrl), item.images!.indexOf(n))} title="Ampliar la imagen" className="block cursor-zoom-in">
                     <img src={chatApi.imageUrl(n)} alt="" className="h-24 max-w-40 rounded-md object-cover" />
-                  </a>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -139,10 +140,13 @@ function Item({item, slug, onSeek, onPermission}: {item: ChatItem; slug: string 
         <div
           className="prose prose-sm max-w-none dark:prose-invert prose-p:my-2 prose-pre:bg-muted prose-code:before:content-none prose-code:after:content-none prose-img:my-2 prose-img:inline-block prose-img:max-h-72 prose-img:max-w-full prose-img:cursor-zoom-in prose-img:rounded-md"
           dangerouslySetInnerHTML={{__html: md(item.text)}}
-          // An image the agent showed opens in full in a new tab.
+          // An image the agent showed opens in the viewer, with the message's other images a ← → away.
           onClick={(e) => {
             const img = e.target instanceof HTMLImageElement ? e.target : null;
-            if (img) window.open(img.src, '_blank', 'noreferrer');
+            if (!img) return;
+            e.preventDefault(); // an image inside a link opens here, not as the link
+            const all = [...e.currentTarget.querySelectorAll('img')].map((i) => i.src);
+            useLightboxStore.getState().open(all, all.indexOf(img.src));
           }}
         />
       );
