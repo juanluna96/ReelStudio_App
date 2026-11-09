@@ -1,9 +1,10 @@
-import {StrictMode, useEffect, useState} from 'react';
+import {StrictMode, useEffect, useRef, useState} from 'react';
 import ResizeHandle from '@/components/common/ResizeHandle';
 import {createRoot} from 'react-dom/client';
 import {ChevronRight} from 'lucide-react';
 import {TooltipProvider} from '@/components/ui/tooltip';
 import Logo from '@/components/common/Logo';
+import {FINALE_MS} from '@/components/common/Logo/Logo.constants';
 import ThemeToggle from '@/components/common/ThemeToggle';
 import {cn} from '@/lib/utils';
 import {Library} from './Library';
@@ -146,6 +147,16 @@ function Root() {
       (e: Error) => setErr(e.message),
     );
   useEffect(() => void load(), []);
+  // Once loaded, the logo plays its finale (the play pops in) before the studio shows; if it loaded at once
+  // there was hardly a loader to see (the desktop splash already played it), so it goes straight on.
+  const started = useRef(performance.now());
+  const [finished, setFinished] = useState(false);
+  useEffect(() => {
+    if (!ws || finished) return;
+    if (performance.now() - started.current < 250) return void setFinished(true);
+    const t = setTimeout(() => setFinished(true), FINALE_MS);
+    return () => clearTimeout(t);
+  }, [ws, finished]);
   const welcome = !!ws && (!ws.configured || firstRun || hash.startsWith('#/bienvenida'));
   useSocket(
     (msg) => {
@@ -155,11 +166,11 @@ function Root() {
     },
     () => void load(),
   );
-  if (!ws)
+  if (!ws || !finished)
     return (
       <div className="grid min-h-screen place-items-center p-6">
         <div className="flex flex-col items-center gap-4 text-center">
-          <Logo variant="mark" size={72} className={err ? undefined : 'animate-pulse'} />
+          <Logo variant="mark" size={72} animated={!err} loaded={!!ws} />
           {err ? <p className="max-w-sm text-sm text-destructive">{err}</p> : <p className="text-xs text-muted-foreground">Cargando…</p>}
         </div>
       </div>

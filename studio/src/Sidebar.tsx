@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
-import {AlertCircle, CalendarClock, Circle, CircleDot, LayoutGrid, Lightbulb, Loader2, MessageCircleQuestion, Newspaper, Palette, Plus, Settings as SettingsIcon, Sparkles, Target, UserRound} from 'lucide-react';
+import {AlertCircle, CalendarClock, Circle, CircleDot, LayoutGrid, Lightbulb, Loader2, MessageCircleQuestion, Newspaper, Palette, PanelLeftClose, PanelLeftOpen, Plus, Settings as SettingsIcon, Sparkles, Target, UserRound} from 'lucide-react';
 import {cn} from '@/lib/utils';
 import {agentsApi, api, fmtAgo, useAgentId, useSocket, type Agent, type AgentState, type ProgressStep, type ReelSummary} from './api';
 import {ReelProgressRing} from './ReelProgress';
@@ -10,8 +10,8 @@ import {ProjectPicker} from './ProjectPicker';
 type Page = UiContext['page'];
 
 // Left sidebar: every video's agent in one list, most recent first; the icon on the left says its state.
-// The library's general conversation shows its state next to "Biblioteca". Contracted (⌘B or the header's
-// button, studio.tsx), it's a column of icons: the project, the pages and each video's state, named on hover.
+// The library's general conversation shows its state next to "Biblioteca". Contracted (⌘B, its edge or the button
+// next to Ajustes), it's a column of icons: the project, the pages and each video's state, named on hover.
 
 const STATE_LABEL: Record<AgentState, string> = {
   working: 'Trabajando',
@@ -116,7 +116,7 @@ const GROUPS: {label: string; pages: {href: string; icon: typeof UserRound; labe
 ];
 
 export function Sidebar({slug, page}: {slug: string | null; page: Page}) {
-  const {setOpen, sideOpen} = useStudio();
+  const {setOpen, sideOpen, toggleSideOpen} = useStudio();
   const compact = !sideOpen;
   const inUse = useAgentId();
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -282,8 +282,22 @@ export function Sidebar({slug, page}: {slug: string | null; page: Page}) {
             </div>
           </div>
         ))}
-      <div className="mt-auto flex flex-none flex-col border-t pt-1 pb-2">
+      {/* Ajustes, and the button that contracts the sidebar to its icons or opens it again (also ⌘B, or dragging its edge). */}
+      <div className={cn('mt-auto flex flex-none border-t pt-1 pb-2', compact ? 'flex-col' : 'items-center [&>a]:flex-1 [&>a]:mr-0')}>
         <NavLink href="#/ajustes" icon={SettingsIcon} label="Ajustes" active={page === 'settings'} compact={compact} />
+        <button
+          type="button"
+          onClick={toggleSideOpen}
+          title={compact ? 'Expandir el panel lateral (⌘B)' : 'Contraer el panel lateral (⌘B)'}
+          aria-label={compact ? 'Expandir el panel lateral' : 'Contraer el panel lateral'}
+          aria-expanded={!compact}
+          className={cn(
+            'mt-0.5 flex flex-none items-center justify-center rounded-md py-1.5 text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring',
+            compact ? 'mx-2' : 'mx-2 px-1.5',
+          )}
+        >
+          {compact ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
+        </button>
       </div>
     </nav>
   );

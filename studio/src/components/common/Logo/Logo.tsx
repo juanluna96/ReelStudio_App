@@ -1,14 +1,15 @@
 import {cn} from '@/lib/utils';
-import {DEFAULT_SIZE, GRADIENT_FROM, GRADIENT_TO, NAME, PLAY, REEL, SPARK, VIEW_BOX} from './Logo.constants';
+import {ANIMATION_CSS, CLASS, screenSvg, DEFAULT_SIZE, GRADIENT_FROM, GRADIENT_TO, NAME, PLAY, REEL, SPARK, VIEW_BOX} from './Logo.constants';
 import {useLogo} from './Logo.hook';
 import * as s from './Logo.styles';
 import type {LogoProps} from './Logo.types';
 
-export default function Logo({variant = 'mark', size = DEFAULT_SIZE, className}: LogoProps) {
-  const {reelGradient, sparkGradient} = useLogo();
+export default function Logo({variant = 'mark', size = DEFAULT_SIZE, animated = false, loaded = false, className}: LogoProps) {
+  const {reelGradient, sparkGradient, screenClip} = useLogo();
   return (
     <span className={cn(s.root, className)}>
-      <svg width={size} height={size} viewBox={VIEW_BOX} className={s.mark} role="img" aria-label={NAME} aria-hidden={variant === 'full' || undefined}>
+      <svg width={size} height={size} viewBox={VIEW_BOX} className={cn(s.mark, animated && 'logo-animated', animated && loaded && CLASS.loaded)} role="img" aria-label={NAME} aria-hidden={variant === 'full' || undefined}>
+        {animated && <style>{ANIMATION_CSS}</style>}
         <defs>
           <linearGradient id={reelGradient} x1="6" y1="6" x2="28" y2="45" gradientUnits="userSpaceOnUse">
             <stop offset="0" stopColor={GRADIENT_FROM} />
@@ -18,10 +19,15 @@ export default function Logo({variant = 'mark', size = DEFAULT_SIZE, className}:
             <stop offset="0" stopColor={GRADIENT_TO} />
             <stop offset="1" stopColor={GRADIENT_FROM} />
           </linearGradient>
+          <clipPath id={screenClip}>
+            <rect {...REEL} />
+          </clipPath>
         </defs>
-        <rect {...REEL} fill={`url(#${reelGradient})`} />
-        <path d={PLAY} fill="#fff" />
-        <path d={SPARK} fill={`url(#${sparkGradient})`} />
+        <rect className={CLASS.reel} {...REEL} fill={`url(#${reelGradient})`} />
+        {/* The phone's screen (a feed of reels scrolling), only while loading: the same markup as the desktop splash. */}
+        {animated && <g dangerouslySetInnerHTML={{__html: screenSvg(screenClip)}} />}
+        <path className={CLASS.play} d={PLAY} fill="#fff" />
+        <path className={CLASS.spark} d={SPARK} fill={`url(#${sparkGradient})`} />
       </svg>
       {variant === 'full' && <span className={s.name}>{NAME}</span>}
     </span>
