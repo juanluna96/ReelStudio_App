@@ -214,7 +214,7 @@ export type UiContext = {
 
 export type Comment = {id: string; t: number; act?: string; said?: string; version?: string; live?: boolean; text: string; frame?: string};
 export type ChatItem =
-  | {id: string; role: 'user'; text: string; comments: Comment[]; refs?: InspirationRef[]; ideas?: IdeaRef[]; images?: string[]; ts: number} // images: pasted ones, at /chat-images/<name>
+  | {id: string; role: 'user'; text: string; comments: Comment[]; refs?: InspirationRef[]; ideas?: IdeaRef[]; images?: string[]; files?: string[]; ts: number} // images and files (documents, audio, video): attached ones, at /chat-images/<name>
   | {id: string; role: 'assistant'; text: string; ts: number}
   | {id: string; role: 'tool'; name: string; summary?: string; result?: string; isError?: boolean; done?: boolean; ts: number}
   | {id: string; role: 'permission'; name: string; summary?: string; detail?: string; state: 'pending' | 'allowed' | 'denied' | 'expired'; ts: number} // the agent asking before it acts

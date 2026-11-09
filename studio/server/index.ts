@@ -269,8 +269,10 @@ app.get('/api/chat/:key/instructions', chatKey, (req, res) => {
 });
 app.post('/api/chat/:key/new', chatKey, handle((req) => chat.newChat(req.params.key)));
 app.get('/api/chat/:key/:chat', chatKey, handle((req) => chat.state(req.params.key, req.params.chat)));
-// Images pasted or dropped into the chat (server/uploads.ts): saved first, then named in the message.
-app.post('/api/chat-images', express.raw({type: Object.keys(uploads.TYPES), limit: '25mb'}), handle((req) => uploads.save(req.body, String(req.headers['content-type'] ?? '').split(';')[0])));
+// Images and files (documents, audio, video) pasted, dropped or picked in the chat (server/uploads.ts): saved first,
+// then named in the message. The original file name comes URI-encoded in X-File-Name (it says what kind it is).
+const upload = handle((req) => uploads.save(req.body, String(req.headers['content-type'] ?? '').split(';')[0], decodeURIComponent(String(req.headers['x-file-name'] ?? ''))));
+app.post(['/api/chat-images', '/api/chat-files'], express.raw({type: () => true, limit: uploads.MAX_BYTES}), upload);
 app.get('/chat-images/:name', (req: Req, res: Response) => {
   const p = uploads.file(req.params.name);
   if (!p) return res.sendStatus(404);

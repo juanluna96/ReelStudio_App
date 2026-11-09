@@ -709,7 +709,7 @@ export function requestMove(key: string, chat: string, slug: unknown, auto = fal
   return {slug, when: 'al terminar este turno'};
 }
 
-export type SendInput = {text?: string; comments?: Comment[]; refs?: unknown; ideas?: unknown; images?: unknown; context?: UiContext; note?: string; audit?: unknown};
+export type SendInput = {text?: string; comments?: Comment[]; refs?: unknown; ideas?: unknown; images?: unknown; files?: unknown; context?: UiContext; note?: string; audit?: unknown};
 // A turn nobody is watching (server/automations.ts); separate from SendInput, which comes straight from the request.
 // system: added to its system prompt. onDone: when it ends; text is the last thing it said.
 // agent/model/effort: the CLI it runs on (an automation's step); absent: the one in Ajustes.
@@ -720,15 +720,16 @@ export type Unattended = {system: string; onDone: (r: {ok: boolean; stopped: boo
 // chat: which conversation; by default the open one.
 // unattended: never asks for permission and can't use his browser, whatever the project's settings say: with his
 // signed-in sessions, what a page says could steer a turn nobody is watching.
-export function send(key: string, {text, comments, refs: rawRefs, ideas: rawIdeas, images: rawImages, context, note, audit}: SendInput, chat = load(key).active, unattended?: Unattended) {
+export function send(key: string, {text, comments, refs: rawRefs, ideas: rawIdeas, images: rawImages, files: rawFiles, context, note, audit}: SendInput, chat = load(key).active, unattended?: Unattended) {
   const rk = runKey(key, chat);
   if (runs.has(rk)) throw httpError(409, 'El agente ya está trabajando en esta conversación');
   // Reels from Inspiración, attached with "Usar como referencia" (general conversation only).
   const refs = key === GENERAL ? [...validRefs(rawRefs), ...validOwnRefs(rawRefs)] : [];
   // Ideas de contenido, attached with "Adjuntar al chat" (general conversation too).
   const ideaRefs = key === GENERAL ? validIdeaRefs(rawIdeas) : [];
-  // Images pasted or dropped into the message (server/uploads.ts).
+  // Images and files (documents, audio, video) pasted, dropped or picked in the message (server/uploads.ts).
   const images = uploads.valid(rawImages);
+  const files = uploads.valid(rawFiles).filter((n) => !images.includes(n));
   // The reel's audience check, attached with "Agregar al chat" (server/script-check.ts).
   // The reel's reviews sent with "Agregar al chat": true (older pages) is the audience one; else the kinds.
   const kinds = audit === true ? ['audience'] : Array.isArray(audit) ? audit : [];
@@ -736,7 +737,7 @@ export function send(key: string, {text, comments, refs: rawRefs, ideas: rawIdea
     key === GENERAL
       ? ''
       : [kinds.includes('audience') && scriptCheck.agentText(key), kinds.includes('hook') && hookCheck.state(key).check && hookCheck.agentText(key)].filter(Boolean).join('\n\n');
-  if (!text?.trim() && !comments?.length && !refs.length && !ideaRefs.length && !images.length && !audited) throw httpError(400, 'mensaje vacío');
+  if (!text?.trim() && !comments?.length && !refs.length && !ideaRefs.length && !images.length && !files.length && !audited) throw httpError(400, 'mensaje vacío');
   // The reel's progress, so the agent always knows what's left without asking.
   const progress =
     key === GENERAL
@@ -757,13 +758,13 @@ export function send(key: string, {text, comments, refs: rawRefs, ideas: rawIdea
   const resume = prev.sessionId && agentById(prev.agent).id === cli.id ? prev.sessionId : null;
   const handover = prev.sessionId && !resume ? handoverText(prev, agentById(prev.agent).label) : '';
   // A slash command (/compact, /context, a skill…) goes as it is: the CLI only reads one at the start of the prompt.
-  const slash = /^\/[^\s/]/.test(text?.trim() ?? '') && !comments?.length && !refs.length && !ideaRefs.length && !images.length;
+  const slash = /^\/[^\s/]/.test(text?.trim() ?? '') && !comments?.length && !refs.length && !ideaRefs.length && !images.length && !files.length;
   // A resumed session keeps the system prompt it started with (Claude Code ignores a new one): what changed goes in the prompt.
   const brief = prev.briefing && resume ? `[Reel Studio: esta conversación pasó a ser la del video ${V()}/${key}/. Desde ahora valen estas instrucciones, en lugar de las de la conversación general:]\n${SYSTEM(key)}` : '';
   const told = key === GENERAL && resume && !prev.moveTold ? `[Reel Studio: ${MOVE_LINE}]` : '';
   const prompt = slash
     ? text!.trim()
-    : [handover, brief, told, [fmtCtx(context, progress, style, voice, kind), CURRENT].filter(Boolean).join('\n'), note, commentsText(key, comments), refsText(refs.filter((r) => !r.own)), ownRefsText(refs.filter((r) => r.own)), ideaRefsText(ideaRefs), audited, uploads.agentText(images), text?.trim()].filter(Boolean).join('\n\n');
+    : [handover, brief, told, [fmtCtx(context, progress, style, voice, kind), CURRENT].filter(Boolean).join('\n'), note, commentsText(key, comments), refsText(refs.filter((r) => !r.own)), ownRefsText(refs.filter((r) => r.own)), ideaRefsText(ideaRefs), audited, uploads.agentText(images, files), text?.trim()].filter(Boolean).join('\n\n');
   // A step's own model and effort when it still exists on that CLI (choiceOf falls back to the starting choice).
   const {model, effort} = choiceOf(unattended?.agent ? {model: unattended.model, effort: unattended.effort} : prev, cli);
 
@@ -801,7 +802,7 @@ export function send(key: string, {text, comments, refs: rawRefs, ideas: rawIdea
       delete c.briefing;
       if (key === GENERAL) c.moveTold = true;
     });
-  push({id: id(), role: 'user', text: text?.trim() ?? '', comments: comments ?? [], ...(refs.length ? {refs} : {}), ...(ideaRefs.length ? {ideas: ideaRefs} : {}), ...(images.length ? {images} : {}), ts: Date.now()});
+  push({id: id(), role: 'user', text: text?.trim() ?? '', comments: comments ?? [], ...(refs.length ? {refs} : {}), ...(ideaRefs.length ? {ideas: ideaRefs} : {}), ...(images.length ? {images} : {}), ...(files.length ? {files} : {}), ts: Date.now()});
 
   const proc = cli.turn({prompt, systemPrompt: unattended ? `${SYSTEM(key)}\n${unattended.system}` : SYSTEM(key), resume, cwd: ROOT, env: {REEL_STUDIO: key, REEL_STUDIO_CHAT: chat, REEL_STUDIO_ROOT: ROOT, REEL_STUDIO_PROJECT: PROJECT_DIR}, model, effort, chrome: !unattended && getChromeAccess(), mode: unattended ? '' : modeOf(prev, cli)});
   // Starts from what it was (a new session from another agent starts empty).
@@ -982,7 +983,7 @@ export const runningIn = (projectDir: string) => [...runs.values()].some((r) => 
 
 // A video being deleted: its conversations and the images pasted into them.
 export function remove(key: string) {
-  uploads.remove(load(key).chats.flatMap((c) => c.items.flatMap((i) => (i.role === 'user' ? (i.images ?? []) : []))));
+  uploads.remove(load(key).chats.flatMap((c) => c.items.flatMap((i) => (i.role === 'user' ? [...(i.images ?? []), ...(i.files ?? [])] : []))));
   fs.rmSync(file(key), {force: true});
 }
 

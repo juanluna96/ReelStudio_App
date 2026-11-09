@@ -1,9 +1,12 @@
 import {useCallback, useEffect, useLayoutEffect, useRef, useState} from 'react';
 import ResizeHandle from '@/components/common/ResizeHandle';
 import {marked} from 'marked';
-import {ArrowUp, Check, History, ImagePlus, Lightbulb, Loader2, PanelRightClose, PanelRightOpen, Plus, Square, Target, Wrench, X} from 'lucide-react';
+import {ArrowUp, Check, History, Lightbulb, Paperclip, Loader2, PanelRightClose, PanelRightOpen, Plus, Square, Target, Wrench, X} from 'lucide-react';
 import {Button} from '@/components/ui/button';
 import {cn} from '@/lib/utils';
+import AttachmentChip from '@/components/chat/AttachmentChip';
+import {ACCEPT, MAX_FILES, MAX_MB} from '@/components/chat/AttachmentChip/AttachmentChip.constants';
+import {kindOf} from '@/components/chat/AttachmentChip/AttachmentChip.utils';
 import ListSkeleton from '@/components/common/ListSkeleton';
 import {DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger} from '@/components/ui/dropdown-menu';
 import {accountApi, chatApi, fmtAgo, fmtTime, inspirationApi, useAgentId, useAgentName, useSocket, type ChatItem, type ChatList, type ChatMeta, type ChatState, type IdeaRef, type InspirationRef} from './api';
@@ -119,6 +122,15 @@ function Item({item, slug, onSeek, onPermission}: {item: ChatItem; slug: string 
               ))}
             </ul>
           )}
+          {item.files && item.files.length > 0 && (
+            <ul className="flex flex-wrap gap-1.5">
+              {item.files.map((n) => (
+                <li key={n} className="min-w-0">
+                  <AttachmentChip name={n} href={chatApi.imageUrl(n)} inverted />
+                </li>
+              ))}
+            </ul>
+          )}
           {item.text && <p className="whitespace-pre-wrap">{item.text}</p>}
         </div>
       );
@@ -179,11 +191,11 @@ function IdeaChip({idea, className}: {idea: IdeaRef; className?: string}) {
 // What you were typing in each conversation, kept while you switch tabs.
 const drafts = new Map<string, string>();
 
-// An image pasted or dropped into the message box: shown at once (url, the local file), uploaded meanwhile
-// (name, once saved; error if it failed).
-type Pending = {key: string; url: string; name?: string; error?: string};
-const MAX_IMAGES = 10;
-const isImage = (f: File) => /^image\/(png|jpeg|webp|gif)$/.test(f.type);
+// A file pasted, dropped or picked in the message box: an image shows at once (url, the local file); a document,
+// audio or video, as a chip with its name and size. Uploaded meanwhile (name, once saved; error if it failed).
+type Pending = {key: string; image: boolean; label: string; size: number; url?: string; name?: string; error?: string};
+// A pasted screenshot has no useful name, only its type.
+const kindOfFile = (f: File) => kindOf(f.name) ?? (/^image\/(png|jpeg|webp|gif)$/.test(f.type) ? 'image' : null);
 
 // One conversation (a tab of a reel's, or of the library's general ones). Stays mounted while the panel
 // is collapsed, so it keeps streaming.
@@ -220,16 +232,24 @@ function Conversation({chatKey, chatId, slug, visible, onNew}: {chatKey: string;
   const [sending, setSending] = useState(false);
   const [images, setImages] = useState<Pending[]>([]);
   const [dragging, setDragging] = useState(false);
+  // What couldn't be attached: its own line in the box (the strip under it is too narrow for it).
+  const [attachErr, setAttachErr] = useState('');
   const uploading = images.some((i) => !i.name && !i.error);
-  const ready = images.filter((i) => i.name).map((i) => i.name!);
-  // Paste or drop: each image is uploaded right away; anything else is left out, saying so.
+  const ready = images.filter((i) => i.name && i.image).map((i) => i.name!);
+  const readyFiles = images.filter((i) => i.name && !i.image).map((i) => i.name!);
+  // Paste, drop or pick: each file is uploaded right away; what the agent can't read (or too much) is left out, saying so.
   const addImages = (files: File[]) => {
-    const ok = files.filter(isImage).slice(0, Math.max(0, MAX_IMAGES - images.length));
-    if (files.length > ok.length) setErr(files.some((f) => !isImage(f)) ? 'Solo imágenes PNG, JPG, WebP o GIF' : `Como mucho ${MAX_IMAGES} imágenes por mensaje`);
+    const known = files.filter((f) => kindOfFile(f));
+    const small = known.filter((f) => f.size <= MAX_MB * 1024 * 1024);
+    const ok = small.slice(0, Math.max(0, MAX_FILES - images.length));
+    const unknown = files.find((f) => !kindOfFile(f));
+    const big = known.find((f) => f.size > MAX_MB * 1024 * 1024);
+    setAttachErr(files.length === ok.length ? '' : unknown ? `No puedo leer ${unknown.name || 'ese archivo'}` : big ? `${big.name} pesa más de ${MAX_MB} MB` : `Máximo ${MAX_FILES} archivos por mensaje`);
     for (const f of ok) {
       const key = Math.random().toString(36).slice(2);
-      setImages((xs) => [...xs, {key, url: URL.createObjectURL(f)}]);
-      chatApi.uploadImage(f).then(
+      const image = kindOfFile(f) === 'image';
+      setImages((xs) => [...xs, {key, image, label: f.name || 'imagen', size: f.size, url: image ? URL.createObjectURL(f) : undefined}]);
+      (f.name ? chatApi.uploadFile(f) : chatApi.uploadImage(f)).then(
         ({name}) => setImages((xs) => xs.map((x) => (x.key === key ? {...x, name} : x))),
         (e: Error) => setImages((xs) => xs.map((x) => (x.key === key ? {...x, error: e.message} : x))),
       );
@@ -239,7 +259,7 @@ function Conversation({chatKey, chatId, slug, visible, onNew}: {chatKey: string;
   const removeImage = (key: string) =>
     setImages((xs) => {
       const x = xs.find((i) => i.key === key);
-      if (x) URL.revokeObjectURL(x.url);
+      if (x?.url) URL.revokeObjectURL(x.url);
       return xs.filter((i) => i.key !== key);
     });
   const agent = useAgentName();
@@ -346,14 +366,15 @@ function Conversation({chatKey, chatId, slug, visible, onNew}: {chatKey: string;
 
   const send = async (msg: string) => {
     if (!comments.length && !refs.length && !ideaRefs.length && !images.length && !audit && studioCommand(msg)) return;
-    if ((!msg.trim() && !comments.length && !refs.length && !ideaRefs.length && !ready.length && !audit) || st?.running || uploading) return;
+    if ((!msg.trim() && !comments.length && !refs.length && !ideaRefs.length && !ready.length && !readyFiles.length && !audit) || st?.running || uploading) return;
     setSending(true);
     setErr('');
     stick.current = true;
     try {
-      await chatApi.send(chatKey, chatId, audit && !msg.trim() ? (auditKinds.length > 1 ? 'Aplica estos análisis al guion.' : auditKinds[0] === 'hook' ? 'Aplica este análisis del gancho al guion.' : 'Aplica este análisis de audiencia al guion.') : msg, comments, {...studio.uiRef.current}, refs.length ? refs : undefined, ready.length ? ready : undefined, ideaRefs.length ? ideaRefs : undefined, audit ? [...auditKinds] : undefined);
+      await chatApi.send(chatKey, chatId, audit && !msg.trim() ? (auditKinds.length > 1 ? 'Aplica estos análisis al guion.' : auditKinds[0] === 'hook' ? 'Aplica este análisis del gancho al guion.' : 'Aplica este análisis de audiencia al guion.') : msg, comments, {...studio.uiRef.current}, refs.length ? refs : undefined, ready.length ? ready : undefined, ideaRefs.length ? ideaRefs : undefined, audit ? [...auditKinds] : undefined, readyFiles.length ? readyFiles : undefined);
       setText('');
-      for (const i of images) URL.revokeObjectURL(i.url);
+      setAttachErr('');
+      for (const i of images) if (i.url) URL.revokeObjectURL(i.url);
       setImages([]);
       if (slug) {
         studio.clearComments(slug);
@@ -391,8 +412,9 @@ function Conversation({chatKey, chatId, slug, visible, onNew}: {chatKey: string;
     >
       {dragging && (
         <div className="pointer-events-none absolute inset-2 z-20 flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-foreground/40 bg-background/80 text-sm text-muted-foreground backdrop-blur-sm">
-          <ImagePlus className="size-6" />
-          Suelta las imágenes para enviárselas a {agent}
+          <Paperclip className="size-6" />
+          Suelta los archivos para que {agent} los analice
+          <span className="text-xs">Imágenes, PDF, Word, Excel, PowerPoint, texto, audio o video</span>
         </div>
       )}
       <div ref={scroller} onScroll={onScroll} className="flex flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-4">
@@ -503,9 +525,22 @@ function Conversation({chatKey, chatId, slug, visible, onNew}: {chatKey: string;
         )}
         {/* The message box: grows with the text; send (or stop) is the round button inside it. */}
         <div className="flex flex-col rounded-2xl border bg-muted/30 transition-colors focus-within:border-ring/60 focus-within:bg-muted/50">
+          {attachErr && (
+            <p role="alert" className="flex items-center gap-1.5 px-3.5 pt-2.5 text-xs text-destructive">
+              <span className="min-w-0 flex-1">{attachErr}. Puedo leer imágenes, PDF, Word, Excel, PowerPoint, texto, CSV, audio y video.</span>
+              <button type="button" onClick={() => setAttachErr('')} aria-label="Cerrar el aviso" className="flex-none rounded p-0.5 hover:bg-destructive/10">
+                <X className="size-3" />
+              </button>
+            </p>
+          )}
           {images.length > 0 && (
             <ul className="flex flex-wrap gap-2 px-3 pt-3">
-              {images.map((i) => (
+              {images.map((i) =>
+                !i.image ? (
+                  <li key={i.key} className="min-w-0">
+                    <AttachmentChip name={i.label} size={i.size} uploading={!i.name && !i.error} error={i.error} onRemove={() => removeImage(i.key)} />
+                  </li>
+                ) : (
                 <li key={i.key} className="group/img relative" title={i.error ?? undefined}>
                   <img src={i.url} alt="" className={cn('size-16 rounded-md border object-cover', (!i.name || i.error) && 'opacity-50', i.error && 'border-destructive')} />
                   {!i.name && !i.error && <Loader2 className="absolute inset-0 m-auto size-4 animate-spin" />}
@@ -518,7 +553,8 @@ function Conversation({chatKey, chatId, slug, visible, onNew}: {chatKey: string;
                     <X className="size-3" />
                   </button>
                 </li>
-              ))}
+                ),
+              )}
             </ul>
           )}
           <textarea
@@ -528,7 +564,7 @@ function Conversation({chatKey, chatId, slug, visible, onNew}: {chatKey: string;
             onPaste={(e) => {
               const files = [...e.clipboardData.files];
               if (!files.length) return;
-              // An image copied alone: it goes as an image; with text too, the text is pasted as well.
+              // A file copied alone: it's attached; with text too, the text is pasted as well.
               if (!e.clipboardData.getData('text/plain')) e.preventDefault();
               addImages(files);
             }}
@@ -567,7 +603,7 @@ function Conversation({chatKey, chatId, slug, visible, onNew}: {chatKey: string;
             <input
               ref={picker}
               type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
+              accept={ACCEPT}
               multiple
               hidden
               onChange={(e) => {
@@ -575,8 +611,8 @@ function Conversation({chatKey, chatId, slug, visible, onNew}: {chatKey: string;
                 e.target.value = '';
               }}
             />
-            <Button variant="ghost" size="icon-sm" className="flex-none rounded-full text-muted-foreground" onClick={() => picker.current?.click()} title="Adjuntar imágenes (también puedes pegarlas o arrastrarlas)">
-              <ImagePlus />
+            <Button variant="ghost" size="icon-sm" className="flex-none rounded-full text-muted-foreground" onClick={() => picker.current?.click()} title="Adjuntar imágenes, documentos, audio o video para analizar (también puedes pegarlos o arrastrarlos)" aria-label="Adjuntar archivos">
+              <Paperclip />
             </Button>
             {st && <ModelPicker options={options} model={st.model} effort={st.effort} onChange={setOptions} open={pickerOpen} onOpenChange={setPickerOpen} />}
             {st && <ModePicker options={options} mode={st.mode} onChange={setMode} />}

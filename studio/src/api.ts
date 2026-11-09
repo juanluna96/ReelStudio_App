@@ -126,10 +126,14 @@ export const chatApi = {
   // images: names of images already uploaded with uploadImage.
   // ideas: ideas from Ideas de contenido attached to a message of the general conversation.
   // audit: the reel's Alineación con tu audiencia goes with it (its conversation).
-  send: (key: string, chat: string, text: string, comments: Comment[], context?: unknown, refs?: InspirationRef[], images?: string[], ideas?: IdeaRef[], audit?: ('audience' | 'hook')[]) =>
-    post(`/api/chat/${key}/${chat}`, {text, comments, context, refs, images, ideas, audit}),
+  // files: names of documents, audio or video already uploaded with uploadFile.
+  send: (key: string, chat: string, text: string, comments: Comment[], context?: unknown, refs?: InspirationRef[], images?: string[], ideas?: IdeaRef[], audit?: ('audience' | 'hook')[], files?: string[]) =>
+    post(`/api/chat/${key}/${chat}`, {text, comments, context, refs, images, ideas, audit, files}),
   // An image pasted or dropped into the message box, saved in the project; its name goes with the message.
   uploadImage: (file: Blob) => fetch('/api/chat-images', {method: 'POST', headers: {'Content-Type': file.type}, body: file}).then((r) => json<{name: string}>(r)),
+  // Any attachment (image, document, audio, video): its name says what it is, so it goes as raw bytes.
+  uploadFile: (file: File) =>
+    fetch('/api/chat-files', {method: 'POST', headers: {'Content-Type': file.name ? 'application/octet-stream' : file.type, 'X-File-Name': encodeURIComponent(file.name)}, body: file}).then((r) => json<{name: string; kind: 'image' | 'document' | 'audio' | 'video'}>(r)),
   imageUrl: (name: string) => `/chat-images/${encodeURIComponent(name)}`,
   stop: (key: string, chat: string) => post(`/api/chat/${key}/${chat}/stop`),
   seen: (key: string, chat: string) => post(`/api/chat/${key}/${chat}/seen`),
